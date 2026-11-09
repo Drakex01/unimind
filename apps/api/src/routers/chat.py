@@ -1,8 +1,10 @@
 """Chat Orchestration Endpoint: Verified Tenant-Aware Request Path."""
 
+import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -198,3 +200,63 @@ async def execute_chat(
         usage=gen_resp.usage,
         citations=[],
     )
+
+
+@router.post("/stream")
+async def execute_chat_stream(
+    payload: ChatRequest,
+    ctx: TenantContext = Depends(get_tenant_context),
+    gateway: ModelGateway = Depends(get_model_gateway),
+    registry: PluginRegistry = Depends(get_plugin_registry),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """
+    Executes streaming generation via Server-Sent Events (SSE).
+    Streams tokens in real-time while preserving tenant boundaries and auditing.
+    """
+    correlation_id = str(uuid.uuid4())
+    domain_id = payload.domain_plugin_id or "general"
+    instructions = ""
+    required_caps = ["text_generation", "streaming"]
+
+    if domain_id != "general":
+        plugin = registry.get_plugin(domain_id)
+        if not plugin:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Requested domain plugin '{domain_id}' is not installed.",
+            )
+        instructions = registry.get_instructions(domain_id)
+
+    messages: List[ChatMessage] = []
+    if instructions:
+        messages.append(ChatMessage(role=MessageRole.SYSTEM, content=instructions))
+    messages.append(ChatMessage(role=MessageRole.USER, content=payload.message))
+
+    model_to_use = payload.model_id or "mock-model-v1"
+    gen_req = GenerationRequest(
+        model_id=model_to_use,
+        messages=messages,
+        tenant_id=ctx.org_id,
+        correlation_id=correlation_id,
+        stream=True,
+    )
+
+    async def sse_event_generator():
+        accumulated_text = []
+        try:
+            async for chunk in gateway.stream(
+                request=gen_req,
+                required_capabilities=required_caps,
+                allowed_models=ctx.allowed_models,
+            ):
+                if chunk.delta_text:
+                    accumulated_text.append(chunk.delta_text)
+                    yield f"data: {json.dumps({'delta': chunk.delta_text})}\n\n"
+                if chunk.finish_reason:
+                    yield f"data: {json.dumps({'finish_reason': chunk.finish_reason, 'done': True})}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+
+    return StreamingResponse(sse_event_generator(), media_type="text/event-stream")
+

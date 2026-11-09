@@ -12,6 +12,7 @@ from .models import (
     UsageMetadata,
 )
 from .mock_provider import MockModelProvider
+from .gemini_provider import GeminiModelProvider
 from .gateway import (
     CapabilityMismatchError,
     ModelGateway,
@@ -31,6 +32,7 @@ __all__ = [
     "ToolCall",
     "UsageMetadata",
     "MockModelProvider",
+    "GeminiModelProvider",
     "CapabilityMismatchError",
     "ModelGateway",
     "ModelGatewayError",

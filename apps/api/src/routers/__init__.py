@@ -1,5 +1,5 @@
 """API Routers."""
 
-from . import chat, health, plugins
+from . import auth, chat, health, organizations, plugins
 
-__all__ = ["chat", "health", "plugins"]
+__all__ = ["auth", "chat", "health", "organizations", "plugins"]

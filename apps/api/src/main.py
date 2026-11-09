@@ -10,10 +10,11 @@ from fastapi.responses import JSONResponse
 
 from plugin_sdk.registry import PluginRegistry
 from provider_contracts.gateway import ModelGateway
+from provider_contracts.gemini_provider import GeminiModelProvider
 from provider_contracts.mock_provider import MockModelProvider
 from .core.config import settings
 from .core.database import init_db
-from .routers import chat, health, plugins
+from .routers import auth, chat, health, organizations, plugins
 
 # Configure structured logging
 logging.basicConfig(
@@ -24,18 +25,34 @@ logger = logging.getLogger("unimind.api")
 
 
 def setup_dependencies() -> tuple[PluginRegistry, ModelGateway]:
-    """Initialize plugin registry and model gateway."""
+    """Initialize plugin registry and model gateway with real & mock providers."""
     registry = PluginRegistry()
     plugins_dir = Path(settings.plugins_dir)
     registry.discover_and_load(plugins_dir)
     plugins.set_plugin_registry(registry)
 
     gateway = ModelGateway()
+
+    # 1. Register Mock Provider for deterministic offline dev & testing
     mock_provider = MockModelProvider(
         provider_name="mock-provider",
         model_id="mock-model-v1",
     )
     gateway.register_provider(mock_provider)
+
+    # 2. Register Google Gemini cloud provider models
+    gemini_flash = GeminiModelProvider(
+        api_key=settings.gemini_api_key,
+        model_id="gemini-3.8-flash",
+    )
+    gateway.register_provider(gemini_flash)
+
+    gemini_lite = GeminiModelProvider(
+        api_key=settings.gemini_api_key,
+        model_id="gemini-3.5-flash-lite",
+    )
+    gateway.register_provider(gemini_lite)
+
     chat.set_model_gateway(gateway)
     return registry, gateway
 
@@ -83,6 +100,8 @@ async def correlation_id_middleware(request: Request, call_next):
 
 # Mount Routers
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(organizations.router)
 app.include_router(plugins.router)
 app.include_router(chat.router)
 
