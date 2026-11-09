@@ -14,7 +14,7 @@ from provider_contracts.gemini_provider import GeminiModelProvider
 from provider_contracts.mock_provider import MockModelProvider
 from .core.config import settings
 from .core.database import init_db
-from .routers import auth, chat, health, organizations, plugins
+from .routers import auth, chat, health, knowledge, organizations, plugins, workflows
 
 # Configure structured logging
 logging.basicConfig(
@@ -102,8 +102,10 @@ async def correlation_id_middleware(request: Request, call_next):
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(organizations.router)
+app.include_router(knowledge.router)
 app.include_router(plugins.router)
 app.include_router(chat.router)
+app.include_router(workflows.router)
 
 
 @app.get("/")

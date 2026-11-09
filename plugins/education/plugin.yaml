@@ -1,0 +1,46 @@
+schema_version: "1.0"
+
+plugin:
+  id: "education"
+  name: "Education & Research Assistant"
+  version: "1.0.0"
+  description: "Academic literature synthesis, conceptual pedagogy, and structured study curriculum generation."
+  publisher: "unimind-core"
+
+compatibility:
+  unimind_min_version: "1.0.0"
+
+capabilities:
+  - curriculum_design
+  - literature_synthesis
+  - socratic_tutoring
+
+instructions:
+  path: "instructions.md"
+
+models:
+  required:
+    - text_generation
+  preferred:
+    - structured_output
+
+retrieval:
+  enabled: true
+  collection_scope: "tenant"
+  top_k: 5
+  reranking: true
+  citation_required: true
+
+tools:
+  allowed:
+    - "citation_formatter"
+  approval_required: []
+
+permissions:
+  network: "restricted"
+  file_access: "knowledge_base_only"
+  code_execution: false
+
+safety:
+  mode: "informational"
+  require_evidence_for_security_findings: false

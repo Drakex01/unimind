@@ -1,0 +1,46 @@
+schema_version: "1.0"
+
+plugin:
+  id: "engineering"
+  name: "Engineering & Technical Documentation Assistant"
+  version: "1.0.0"
+  description: "Systems architecture design, API contract review, and infrastructure engineering documentation."
+  publisher: "unimind-core"
+
+compatibility:
+  unimind_min_version: "1.0.0"
+
+capabilities:
+  - architecture_review
+  - api_specification
+  - failure_mode_analysis
+
+instructions:
+  path: "instructions.md"
+
+models:
+  required:
+    - text_generation
+  preferred:
+    - structured_output
+
+retrieval:
+  enabled: true
+  collection_scope: "tenant"
+  top_k: 6
+  reranking: true
+  citation_required: true
+
+tools:
+  allowed:
+    - "openapi_linter"
+  approval_required: []
+
+permissions:
+  network: "restricted"
+  file_access: "knowledge_base_only"
+  code_execution: false
+
+safety:
+  mode: "informational"
+  require_evidence_for_security_findings: false

@@ -1,0 +1,41 @@
+# Production-ready non-root Dockerfile for UniMind API
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency definition
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source and packages
+COPY apps/api /app/apps/api
+COPY packages /app/packages
+COPY plugins /app/plugins
+COPY pytest.ini /app/pytest.ini
+
+# Set Python path
+ENV PYTHONPATH="/app:/app/packages/plugin-sdk/src:/app/packages/provider-contracts/src:/app/packages/shared-schemas/src:/app/packages/domain-contracts/src:/app/packages/observability/src"
+
+# Hardened runtime user (non-root)
+RUN useradd -m -u 10001 unimind && \
+    mkdir -p /app/data /app/storage/uploads && \
+    chown -R unimind:unimind /app
+
+USER unimind
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health/live || exit 1
+
+CMD ["uvicorn", "apps.api.src.main:app", "--host", "0.0.0.0", "--port", "8000"]

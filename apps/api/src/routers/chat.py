@@ -26,6 +26,8 @@ from ..core.database import get_db_session
 from ..core.security import TenantContext, get_tenant_context
 from ..models.entities import AuditEvent, Conversation, Message, UsageRecord
 from .plugins import get_plugin_registry
+from .knowledge import get_vector_store
+from ..services.rag import RAGPipeline
 
 router = APIRouter(prefix="/api/v1/chat", tags=["Chat"])
 
@@ -51,6 +53,7 @@ class ChatRequest(BaseModel):
     domain_plugin_id: Optional[str] = "cybersecurity"
     model_id: Optional[str] = "mock-model-v1"
     conversation_id: Optional[str] = None
+    knowledge_base_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -96,13 +99,30 @@ async def execute_chat(
         instructions = registry.get_instructions(domain_id)
         required_caps = plugin.models.required
 
-    # 2. Build Chat Context Messages
+    # 2. RAG Retrieval & Context Augmentation (if knowledge base specified)
+    citations_data = []
+    user_query = payload.message
+    available_citations = []
+    rag = None
+
+    if payload.knowledge_base_id:
+        rag = RAGPipeline(get_vector_store())
+        ret_ctx = await rag.retrieve_and_augment(
+            query=payload.message,
+            org_id=ctx.org_id,
+            workspace_id=ctx.workspace_id,
+            knowledge_base_id=payload.knowledge_base_id,
+        )
+        user_query = ret_ctx.augmented_prompt
+        available_citations = ret_ctx.citations
+
+    # 3. Build Chat Context Messages
     messages: List[ChatMessage] = []
     if instructions:
         messages.append(ChatMessage(role=MessageRole.SYSTEM, content=instructions))
-    messages.append(ChatMessage(role=MessageRole.USER, content=payload.message))
+    messages.append(ChatMessage(role=MessageRole.USER, content=user_query))
 
-    # 3. Model Invocation via Gateway with Tenant Policy Checks
+    # 4. Model Invocation via Gateway with Tenant Policy Checks
     model_to_use = payload.model_id or "mock-model-v1"
     gen_req = GenerationRequest(
         model_id=model_to_use,
@@ -125,6 +145,11 @@ async def execute_chat(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ModelGatewayError as e:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+    # Validate citations
+    if rag and available_citations:
+        valid_cits = rag.validate_citations(gen_resp.text, available_citations)
+        citations_data = [c.model_dump() for c in valid_cits]
 
     # 4. Resolve or Create Conversation
     conv_id = payload.conversation_id
@@ -198,7 +223,7 @@ async def execute_chat(
         domain_plugin_id=domain_id,
         model_id=gen_resp.model_id,
         usage=gen_resp.usage,
-        citations=[],
+        citations=citations_data,
     )
 
 
@@ -228,10 +253,21 @@ async def execute_chat_stream(
             )
         instructions = registry.get_instructions(domain_id)
 
+    user_query = payload.message
+    if payload.knowledge_base_id:
+        rag = RAGPipeline(get_vector_store())
+        ret_ctx = await rag.retrieve_and_augment(
+            query=payload.message,
+            org_id=ctx.org_id,
+            workspace_id=ctx.workspace_id,
+            knowledge_base_id=payload.knowledge_base_id,
+        )
+        user_query = ret_ctx.augmented_prompt
+
     messages: List[ChatMessage] = []
     if instructions:
         messages.append(ChatMessage(role=MessageRole.SYSTEM, content=instructions))
-    messages.append(ChatMessage(role=MessageRole.USER, content=payload.message))
+    messages.append(ChatMessage(role=MessageRole.USER, content=user_query))
 
     model_to_use = payload.model_id or "mock-model-v1"
     gen_req = GenerationRequest(
