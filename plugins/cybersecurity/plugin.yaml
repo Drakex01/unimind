@@ -1,0 +1,47 @@
+schema_version: "1.0"
+
+plugin:
+  id: "cybersecurity"
+  name: "Cybersecurity Assistant"
+  version: "1.0.0"
+  description: "Analyzes security documents and authorized logs with defensive grounding."
+  publisher: "unimind-core"
+
+compatibility:
+  unimind_min_version: "1.0.0"
+
+capabilities:
+  - document_analysis
+  - log_analysis
+  - security_explanation
+
+instructions:
+  path: "instructions.md"
+
+models:
+  required:
+    - text_generation
+  preferred:
+    - structured_output
+
+retrieval:
+  enabled: true
+  collection_scope: "tenant"
+  top_k: 6
+  reranking: true
+  citation_required: true
+
+tools:
+  allowed:
+    - "log_parser"
+  approval_required:
+    - "external_threat_lookup"
+
+permissions:
+  network: "restricted"
+  file_access: "knowledge_base_only"
+  code_execution: false
+
+safety:
+  mode: "informational"
+  require_evidence_for_security_findings: true
